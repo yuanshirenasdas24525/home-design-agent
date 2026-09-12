@@ -9,6 +9,7 @@ from hda.providers.base import Provider
 from hda.models import FloorPlan, Scheme
 from hda.plan_renderer import render_colored_plan
 from hda.grid import build_grid_lines, snap_rooms
+from hda.store import CaseStore
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -24,9 +25,19 @@ class DesignRequest(BaseModel):
     transcript: str = ""
 
 
-def create_app(provider: Provider) -> FastAPI:
+class SaveCaseRequest(BaseModel):
+    community: str = ""
+    layout_type: str = ""
+    style: str = ""
+    floorplan: FloorPlan
+    scheme: Scheme
+    svg: str = ""
+
+
+def create_app(provider: Provider, store: CaseStore | None = None) -> FastAPI:
     app = FastAPI(title="户型效果预览 Agent")
     pipe = Pipeline(provider)
+    store = store or CaseStore()
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -56,6 +67,28 @@ def create_app(provider: Provider) -> FastAPI:
             "colored_plan_svg": svg,
             "scheme": scheme.model_dump(),
         })
+
+    @app.get("/cases", response_class=HTMLResponse)
+    def cases_page():
+        return (_STATIC / "cases.html").read_text(encoding="utf-8")
+
+    @app.post("/api/save_case")
+    def save_case(req: SaveCaseRequest):
+        """整包落库（⑦）：小区+户型+风格 为索引，供历史预览与同小区参考。"""
+        cid = store.save(req.community, req.layout_type, req.style,
+                         req.floorplan, req.scheme, req.svg)
+        return JSONResponse({"id": cid})
+
+    @app.get("/api/cases")
+    def list_cases(community: str = "", layout_type: str = "", style: str = ""):
+        return JSONResponse({"cases": store.list(community, layout_type, style)})
+
+    @app.get("/api/cases/{cid}")
+    def get_case(cid: str):
+        case = store.get(cid)
+        if case is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(case)
 
     @app.post("/api/extract_dims")
     async def extract_dims(image: UploadFile = File(...)):

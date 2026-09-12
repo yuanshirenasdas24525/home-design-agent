@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>案例库</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC",sans-serif;margin:16px;color:#222;background:#f6f6f4}
+  h1{font-size:18px;margin:0 0 4px}
+  .hint{font-size:12px;color:#666;margin-bottom:10px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  input,select,button{font-size:13px;padding:5px}
+  button{cursor:pointer;border:1px solid #bbb;border-radius:6px;background:#fff}
+  .wrap{display:flex;gap:16px;flex-wrap:wrap}
+  ul#list{list-style:none;padding:0;margin:0;min-width:220px;font-size:13px}
+  ul#list li{padding:8px;border:1px solid #ddd;border-radius:6px;margin-bottom:6px;cursor:pointer;background:#fff}
+  ul#list li:hover{border-color:#2f6df6}
+  .tag{display:inline-block;background:#eef;border-radius:4px;padding:1px 6px;margin-right:4px;font-size:11px}
+  #view svg{max-width:560px;border:1px solid #ddd;background:#fff}
+</style>
+</head>
+<body>
+<h1>案例库 — 历史成品 & 同小区/同户型参考</h1>
+<div class="hint">给客户看"别人家同款是怎么装的"。按小区/风格筛选，点一条看它的软装平面方案。</div>
+<div class="bar">
+  <label>小区</label><input id="f_comm" placeholder="全部"/>
+  <label>风格</label>
+  <select id="f_style"><option value="">全部</option><option>现代简约</option><option>北欧</option>
+    <option>轻奢</option><option>中式</option><option>美式</option><option>日式</option></select>
+  <button id="query">筛选</button>
+  <a href="/grid" style="font-size:12px;margin-left:8px">← 回到识别/出图</a>
+</div>
+<div class="wrap">
+  <ul id="list"><li>加载中…</li></ul>
+  <div id="view"><i style="color:#888">点左侧一条案例查看</i></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function load(){
+  const q=new URLSearchParams({community:$('f_comm').value, style:$('f_style').value});
+  const d=await (await fetch('/api/cases?'+q)).json();
+  const cs=d.cases||[];
+  $('list').innerHTML = cs.length? cs.map(c=>
+    `<li data-id="${c.id}"><b>${c.community||'(未填小区)'}</b><br>`+
+    `<span class="tag">${c.layout_type||'户型?'}</span><span class="tag">${c.style||''}</span></li>`).join('')
+    : '<li style="cursor:default">暂无案例，去 /grid 生成方案后点"存入案例库"</li>';
+  $('list').querySelectorAll('li[data-id]').forEach(li=>li.onclick=()=>view(li.dataset.id));
+}
+async function view(id){
+  const c=await (await fetch('/api/cases/'+id)).json();
+  const rooms=(c.scheme.rooms||[]).map(rs=>`<li><b>${rs.name}</b>：${(rs.furniture||[]).map(f=>f.item).join('、')}</li>`).join('');
+  $('view').innerHTML=`<h3>${c.community||''} ${c.style||''}</h3>`+(c.svg||'')+
+    '<h4>各房间配置</h4><ul style="font-size:13px">'+rooms+'</ul>';
+}
+$('query').onclick=load;
+load();
+</script>
+</body>
+</html>
