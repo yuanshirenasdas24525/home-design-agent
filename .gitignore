@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+
+# 环境变量 / 密钥（切勿提交 API key）
+.env
+.env.*
+*.key
+secrets/
+
+# 数据 / 产物（户型图、生成的图、3D 模型等大文件）
+data/
+outputs/
+*.sqlite
+*.db
+
+# 系统 / 编辑器
+.DS_Store
+.idea/
+.vscode/
+*.log
