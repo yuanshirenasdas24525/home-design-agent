@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>户型效果预览 Agent</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", sans-serif; margin: 24px; color: #222; }
+    label { display: block; margin: 8px 0 4px; font-weight: 600; }
+    input, textarea { width: 320px; padding: 6px; }
+    button { margin-top: 16px; padding: 10px 20px; font-size: 15px; cursor: pointer; }
+    #out { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+    img, svg { max-width: 360px; height: auto; }
+  </style>
+</head>
+<body>
+  <h1>户型效果预览</h1>
+  <form id="f">
+    <label>户型图</label><input type="file" name="image" accept="image/*" required/>
+    <label>小区名</label><input name="community" placeholder="如 阳光花园"/>
+    <label>风格</label><input name="style" placeholder="如 北欧"/>
+    <label>口述需求</label><textarea name="transcript" rows="3" placeholder="不拆承重墙，要个书房..."></textarea>
+    <button type="submit">生成预览</button>
+  </form>
+  <div id="out"></div>
+  <script>
+    document.getElementById('f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const out = document.getElementById('out');
+      out.innerHTML = '生成中…';
+      const resp = await fetch('/api/preview', { method: 'POST', body: new FormData(e.target) });
+      const data = await resp.json();
+      out.innerHTML = '<div class="card"><h3>彩平图</h3>' + data.colored_plan_svg + '</div>';
+      for (const [rid, url] of Object.entries(data.perspectives)) {
+        out.innerHTML += '<div class="card"><h3>' + rid + '</h3><img src="' + url + '"/></div>';
+      }
+    });
+  </script>
+</body>
+</html>
