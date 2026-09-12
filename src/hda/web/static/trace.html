@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>户型描线工具</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC",sans-serif;margin:16px;color:#222;background:#f6f6f4}
+  h1{font-size:18px;margin:0 0 8px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+  button{padding:7px 12px;font-size:13px;cursor:pointer;border:1px solid #bbb;border-radius:6px;background:#fff}
+  button.active{background:#2f6df6;color:#fff;border-color:#2f6df6}
+  .hint{font-size:12px;color:#666;margin:6px 0}
+  .wrap{display:flex;gap:16px;flex-wrap:wrap}
+  #stage{border:1px solid #ccc;background:#fff;max-width:100%;cursor:crosshair;touch-action:none}
+  #out svg{max-width:520px;border:1px solid #ddd;background:#fff}
+  #rooms{font-size:13px;min-width:180px}
+  #rooms li{margin:2px 0}
+  .tag{display:inline-block;background:#eee;border-radius:4px;padding:1px 6px;margin-left:4px;font-size:11px}
+  #scaleInfo{font-size:12px;color:#2f6df6}
+</style>
+</head>
+<body>
+<h1>户型描线工具 — 在你的真图上描出房间，几何一定对得上</h1>
+<div class="bar">
+  <input type="file" id="file" accept="image/*"/>
+  <button id="mDraw" class="active">✏️ 画房间</button>
+  <button id="finish">✓ 完成当前房间</button>
+  <button id="undoPt">↶ 撤销上一点</button>
+  <button id="mScale">📏 标定比例</button>
+  <button id="delRoom">🗑 删除上个房间</button>
+  <button id="render">🎨 生成彩平图</button>
+  <span id="scaleInfo">比例未标定（先点“标定比例”，在一段已知尺寸上点两点并输入米数）</span>
+</div>
+<div class="hint">步骤：① 选图 ② 标定比例（如在“4150”那段两端点两点，输入 4.15）③ 点“画房间”，沿墙角逐个点，点“完成当前房间”并命名 ④ 每间房重复 ⑤ 生成彩平图</div>
+<div class="wrap">
+  <canvas id="stage" width="900" height="600"></canvas>
+  <div>
+    <b>已描房间</b>
+    <ul id="rooms"></ul>
+    <div id="out"></div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('stage'), ctx=cv.getContext('2d');
+let img=null, rooms=[], cur=[], mode='draw';
+let scalePts=[], pxPerM=null;
+
+document.getElementById('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{ const im=new Image(); im.onload=()=>{
+    img=im; const maxW=900, s=Math.min(1, maxW/im.width);
+    cv.width=Math.round(im.width*s); cv.height=Math.round(im.height*s); draw();
+  }; im.src=r.result; };
+  r.readAsDataURL(f);
+};
+function setMode(m){ mode=m;
+  document.getElementById('mDraw').classList.toggle('active', m==='draw');
+  document.getElementById('mScale').classList.toggle('active', m==='scale');
+  cv.style.cursor = m==='scale'?'cell':'crosshair';
+}
+document.getElementById('mDraw').onclick=()=>setMode('draw');
+document.getElementById('mScale').onclick=()=>{ scalePts=[]; setMode('scale'); };
+
+cv.onclick=ev=>{
+  const r=cv.getBoundingClientRect();
+  const p=[ev.clientX-r.left, ev.clientY-r.top];
+  if(mode==='scale'){
+    scalePts.push(p);
+    if(scalePts.length===2){
+      const d=Math.hypot(scalePts[0][0]-scalePts[1][0], scalePts[0][1]-scalePts[1][1]);
+      const m=parseFloat(prompt('这两点之间的真实距离（米）？例如 4.15','4.15'));
+      if(m>0){ pxPerM=d/m; document.getElementById('scaleInfo').textContent=`比例已标定：${pxPerM.toFixed(1)} px/米`; }
+      setMode('draw');
+    }
+    draw(); return;
+  }
+  cur.push(p); draw();
+};
+cv.ondblclick=()=>finishRoom();
+document.getElementById('finish').onclick=()=>finishRoom();
+document.getElementById('undoPt').onclick=()=>{ cur.pop(); draw(); };
+document.getElementById('delRoom').onclick=()=>{ rooms.pop(); refreshRooms(); draw(); };
+
+function finishRoom(){
+  if(cur.length<3){ alert('至少点 3 个角'); return; }
+  const name=prompt('房间名？如 客餐厅 / 主卧 / 厨房','');
+  if(name===null) return;
+  let area=parseFloat(prompt('面积（㎡，可留空回车）',''))||0;
+  rooms.push({name:name||('房间'+(rooms.length+1)), area, pts:cur.slice()});
+  cur=[]; refreshRooms(); draw();
+}
+function refreshRooms(){
+  document.getElementById('rooms').innerHTML=rooms.map((r,i)=>
+    `<li>${i+1}. ${r.name}<span class="tag">${r.area?r.area+'㎡':r.pts.length+'点'}</span></li>`).join('');
+}
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(img) ctx.drawImage(img,0,0,cv.width,cv.height);
+  const colors=['#eaf1e6','#f3ead9','#e7eef5','#f5e9e6','#eee7f2','#e6f1f0','#f5f1e0','#ecebe5'];
+  rooms.forEach((rm,i)=>{ poly(rm.pts,colors[i%colors.length],'#2f6df6',true);
+    const c=centroid(rm.pts);
+    ctx.fillStyle='#123'; ctx.font='13px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(rm.name, c[0], c[1]); });
+  if(cur.length){ poly(cur,'rgba(47,109,246,0.15)','#2f6df6',false);
+    cur.forEach(p=>dot(p,'#2f6df6')); }
+  if(scalePts.length){ ctx.strokeStyle='#e53'; ctx.lineWidth=2; ctx.beginPath();
+    scalePts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.stroke();
+    scalePts.forEach(p=>dot(p,'#e53')); }
+}
+function poly(pts,fill,stroke,close){ if(!pts.length)return;
+  ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+  if(close)ctx.closePath(); ctx.fillStyle=fill; if(close)ctx.fill();
+  ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
+function dot(p,c){ ctx.fillStyle=c; ctx.beginPath(); ctx.arc(p[0],p[1],3,0,7); ctx.fill(); }
+function centroid(pts){ let x=0,y=0; pts.forEach(p=>{x+=p[0];y+=p[1]}); return [x/pts.length,y/pts.length]; }
+function shoelaceM(pts){ let a=0; for(let i=0;i<pts.length;i++){ const[x1,y1]=pts[i],[x2,y2]=pts[(i+1)%pts.length]; a+=x1*y2-x2*y1;} return Math.abs(a)/2/(pxPerM*pxPerM); }
+
+document.getElementById('render').onclick=async()=>{
+  if(!rooms.length){ alert('先描至少一个房间'); return; }
+  if(!pxPerM){ alert('请先标定比例'); return; }
+  const allx=rooms.flatMap(r=>r.pts.map(p=>p[0])), ally=rooms.flatMap(r=>r.pts.map(p=>p[1]));
+  const minx=Math.min(...allx), miny=Math.min(...ally);
+  const fp={ community:'', layout_type:'', total_area:0, doors:[], windows:[],
+    rooms: rooms.map((r,i)=>({ room_id:'r'+(i+1), name:r.name,
+      area: r.area || +shoelaceM(r.pts).toFixed(2),
+      polygon: r.pts.map(p=>[ +((p[0]-minx)/pxPerM).toFixed(3), +((p[1]-miny)/pxPerM).toFixed(3) ]) })) };
+  const resp=await fetch('/api/render_plan',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({floorplan:fp})});
+  const data=await resp.json();
+  document.getElementById('out').innerHTML='<h3>彩平图（按你描的几何）</h3>'+data.colored_plan_svg;
+};
+setMode('draw');
+</script>
+</body>
+</html>
