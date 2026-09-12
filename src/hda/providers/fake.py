@@ -2,6 +2,7 @@ from __future__ import annotations
 from hda.models import (
     FloorPlan, Room, Door, Window, Requirement,
     Scheme, RoomScheme, FurnitureItem, ConstraintCheck,
+    GridPlan, GridRoom,
 )
 
 # 1x1 像素 PNG，占位图
@@ -31,6 +32,15 @@ class FakeProvider:
             windows=[Window(room_id="living_room", pos=(2.5, 4.5)),
                      Window(room_id="master_bedroom", pos=(7.0, 0))],
         )
+
+    def extract_grid(self, image_bytes: bytes) -> GridPlan:
+        return GridPlan(
+            top_dims=[4150, 2900, 3000], bottom_dims=[4150, 1700, 4200],
+            left_dims=[1500, 7100, 3000], right_dims=[1500, 5050, 3850, 1200],
+            rooms=[
+                GridRoom(name="客餐厅", area=31.03, bbox=[0.05, 0.3, 0.45, 0.75]),
+                GridRoom(name="主卧", area=13.63, bbox=[0.55, 0.6, 0.95, 0.9]),
+            ])
 
     def parse_requirement(self, options: dict, transcript: str) -> Requirement:
         constraints = []

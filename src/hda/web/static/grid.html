@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>户型半自动识别</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC",sans-serif;margin:16px;color:#222;background:#f6f6f4}
+  h1{font-size:18px;margin:0 0 6px}
+  .hint{font-size:12px;color:#666;margin:4px 0 10px}
+  .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+  .col{min-width:280px}
+  button{padding:6px 11px;font-size:13px;cursor:pointer;border:1px solid #bbb;border-radius:6px;background:#fff}
+  button.pri{background:#2f6df6;color:#fff;border-color:#2f6df6}
+  img.ref{max-width:340px;border:1px solid #ccc;background:#fff}
+  .dims label{display:inline-block;width:44px;font-size:12px;color:#555}
+  .dims input{width:220px;font-size:12px;padding:3px}
+  .dims div{margin:3px 0}
+  #rooms{list-style:none;padding:0;font-size:13px}
+  #rooms li{display:flex;align-items:center;gap:6px;margin:3px 0;padding:3px;border-radius:4px}
+  #rooms li.active{background:#e7f0ff;outline:1px solid #2f6df6}
+  #rooms .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+  #status{font-size:12px;color:#2f6df6;min-height:16px}
+  #out svg{max-width:520px;border:1px solid #ddd;background:#fff;margin-top:6px}
+  svg text{pointer-events:none}
+</style>
+</head>
+<body>
+<h1>户型半自动识别 — 自动读尺寸拼网格，你点两下改错的</h1>
+<div class="hint">① 选户型图（自动读尺寸+放房间）② 如某条尺寸读错，直接改文本框点“应用尺寸” ③ 房间放错：点右侧房间→在网格里点它的“左上格”和“右下格” ④ 生成彩平图</div>
+<div class="row">
+  <div class="col">
+    <input type="file" id="file" accept="image/*"/>
+    <div id="status">请选择户型图…</div>
+    <img id="ref" class="ref" style="display:none"/>
+    <div class="dims" style="margin-top:8px">
+      <div><label>顶部</label><input id="d_top" placeholder="4150,2900,3000"/></div>
+      <div><label>底部</label><input id="d_bottom" placeholder="4150,1700,4200"/></div>
+      <div><label>左侧</label><input id="d_left" placeholder="1500,7100,3000"/></div>
+      <div><label>右侧</label><input id="d_right" placeholder="1500,5050,3850,1200"/></div>
+      <button id="applyDims">应用尺寸 / 重拼网格</button>
+    </div>
+  </div>
+  <div class="col">
+    <b>房间</b>（点选后到网格里点“左上格→右下格”改范围）
+    <ul id="rooms"></ul>
+    <button id="addRoom">+ 加房间</button>
+    <button id="render" class="pri">🎨 生成彩平图</button>
+  </div>
+  <div class="col">
+    <b>网格（点格子给选中的房间定范围）</b>
+    <div id="grid"></div>
+  </div>
+</div>
+<div id="out"></div>
+<script>
+const COLORS=['#eaf1e6','#f3ead9','#e7eef5','#f5e9e6','#eee7f2','#e6f1f0','#f5f1e0','#ecebe5','#f0e8ee','#e8eef0'];
+let xL=[], yL=[], rooms=[], active=-1, pending=null;
+const GS=42, PAD=10;  // 网格像素/米
+
+const $=id=>document.getElementById(id);
+function status(t){ $('status').textContent=t; }
+
+$('file').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  $('ref').src=URL.createObjectURL(f); $('ref').style.display='';
+  status('正在读尺寸（glm-4v-plus，约十几秒）…');
+  const fd=new FormData(); fd.append('image', f);
+  const resp=await fetch('/api/extract_dims',{method:'POST',body:fd});
+  if(!resp.ok){ status('读取失败: '+resp.status); return; }
+  const d=await resp.json();
+  $('d_top').value=(d.dims.top_dims||[]).join(',');
+  $('d_bottom').value=(d.dims.bottom_dims||[]).join(',');
+  $('d_left').value=(d.dims.left_dims||[]).join(',');
+  $('d_right').value=(d.dims.right_dims||[]).join(',');
+  xL=d.x_lines; yL=d.y_lines;
+  rooms=(d.floorplan.rooms||[]).map((r,i)=>{
+    const xs=r.polygon.map(p=>p[0]), ys=r.polygon.map(p=>p[1]);
+    return {name:r.name, area:r.area,
+      c0:nearIdx(xL,Math.min(...xs)), c1:nearIdx(xL,Math.max(...xs)),
+      r0:nearIdx(yL,Math.min(...ys)), r1:nearIdx(yL,Math.max(...ys))};
+  });
+  active = rooms.length?0:-1;
+  status('读到 '+rooms.length+' 个房间。核对尺寸、点选房间在网格上修正范围。');
+  refreshRooms(); drawGrid();
+};
+function nearIdx(lines,v){ let b=0,bd=1e9; lines.forEach((l,i)=>{const dd=Math.abs(l-v); if(dd<bd){bd=dd;b=i;}}); return b; }
+
+function parseDims(s){ return s.split(',').map(x=>parseFloat(x.trim())).filter(x=>x>0); }
+function cumUnion(a,b){ const cs=arr=>{let s=[0];arr.forEach(d=>s.push(s[s.length-1]+d));return s;};
+  const set=new Set([...cs(a),...cs(b)].map(v=>Math.round(v)));
+  return [...set].sort((x,y)=>x-y).map(v=>v/1000); }
+$('applyDims').onclick=()=>{
+  xL=cumUnion(parseDims($('d_top').value), parseDims($('d_bottom').value));
+  yL=cumUnion(parseDims($('d_left').value), parseDims($('d_right').value));
+  rooms.forEach(r=>{ r.c1=Math.min(r.c1,xL.length-1); r.r1=Math.min(r.r1,yL.length-1);
+    if(r.c1<=r.c0)r.c1=Math.min(r.c0+1,xL.length-1); if(r.r1<=r.r0)r.r1=Math.min(r.r0+1,yL.length-1); });
+  status('网格已按尺寸重拼（'+(xL.length-1)+'×'+(yL.length-1)+' 格）'); drawGrid();
+};
+
+function refreshRooms(){
+  $('rooms').innerHTML='';
+  rooms.forEach((r,i)=>{
+    const li=document.createElement('li'); if(i===active)li.className='active';
+    li.innerHTML=`<span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>`+
+      `<span style="flex:1">${r.name}</span>`+
+      `<button data-a="${i}">选</button><button data-d="${i}">删</button>`;
+    $('rooms').appendChild(li);
+  });
+  $('rooms').querySelectorAll('button[data-a]').forEach(b=>b.onclick=()=>{active=+b.dataset.a;pending=null;refreshRooms();drawGrid();});
+  $('rooms').querySelectorAll('button[data-d]').forEach(b=>b.onclick=()=>{rooms.splice(+b.dataset.d,1);active=Math.min(active,rooms.length-1);refreshRooms();drawGrid();});
+}
+$('addRoom').onclick=()=>{ const n=prompt('房间名？',''); if(n===null)return;
+  rooms.push({name:n||('房间'+(rooms.length+1)),area:0,c0:0,c1:1,r0:0,r1:1}); active=rooms.length-1; refreshRooms(); drawGrid(); };
+
+function drawGrid(){
+  if(xL.length<2||yL.length<2){ $('grid').innerHTML='<i>无网格</i>'; return; }
+  const W=(xL[xL.length-1])*GS+PAD*2, H=(yL[yL.length-1])*GS+PAD*2;
+  const sx=x=>x*GS+PAD, sy=y=>y*GS+PAD;
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" style="border:1px solid #ccc;background:#fff">`;
+  // 房间块
+  rooms.forEach((r,i)=>{ const x=sx(xL[r.c0]),y=sy(yL[r.r0]),w=(xL[r.c1]-xL[r.c0])*GS,h=(yL[r.r1]-yL[r.r0])*GS;
+    s+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${COLORS[i%COLORS.length]}" `+
+       `stroke="${i===active?'#2f6df6':'#999'}" stroke-width="${i===active?3:1}"/>`;
+    s+=`<text x="${x+w/2}" y="${y+h/2}" font-size="12" text-anchor="middle" fill="#333">${r.name}</text>`; });
+  // 网格线
+  for(let i=0;i<xL.length;i++) s+=`<line x1="${sx(xL[i])}" y1="${PAD}" x2="${sx(xL[i])}" y2="${H-PAD}" stroke="#ddd"/>`;
+  for(let j=0;j<yL.length;j++) s+=`<line x1="${PAD}" y1="${sy(yL[j])}" x2="${W-PAD}" y2="${sy(yL[j])}" stroke="#ddd"/>`;
+  // 可点击格子
+  for(let i=0;i<xL.length-1;i++) for(let j=0;j<yL.length-1;j++)
+    s+=`<rect class="cell" data-i="${i}" data-j="${j}" x="${sx(xL[i])}" y="${sy(yL[j])}" `+
+       `width="${(xL[i+1]-xL[i])*GS}" height="${(yL[j+1]-yL[j])*GS}" fill="transparent" style="cursor:pointer"/>`;
+  s+='</svg>';
+  $('grid').innerHTML=s;
+  $('grid').querySelectorAll('.cell').forEach(c=>c.onclick=()=>cellClick(+c.dataset.i,+c.dataset.j));
+}
+function cellClick(i,j){
+  if(active<0){ status('先在左侧点选一个房间'); return; }
+  if(!pending){ pending=[i,j]; status('已选左上格，请点该房间的右下格'); return; }
+  const r=rooms[active];
+  r.c0=Math.min(pending[0],i); r.c1=Math.max(pending[0],i)+1;
+  r.r0=Math.min(pending[1],j); r.r1=Math.max(pending[1],j)+1;
+  pending=null; status('已更新「'+r.name+'」范围'); drawGrid();
+}
+
+$('render').onclick=async()=>{
+  if(!rooms.length){ alert('没有房间'); return; }
+  const rect=(x0,y0,x1,y1)=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  const fp={community:'',layout_type:'',total_area:0,doors:[],windows:[],
+    rooms:rooms.map((r,i)=>({room_id:'r'+(i+1),name:r.name,area:r.area||0,
+      polygon:rect(xL[r.c0],yL[r.r0],xL[r.c1],yL[r.r1])}))};
+  const resp=await fetch('/api/render_plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({floorplan:fp})});
+  const d=await resp.json();
+  $('out').innerHTML='<h3>彩平图（按尺寸网格，对得上你的户型）</h3>'+d.colored_plan_svg;
+  $('out').scrollIntoView({behavior:'smooth'});
+};
+</script>
+</body>
+</html>

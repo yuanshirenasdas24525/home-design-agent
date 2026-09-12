@@ -36,7 +36,8 @@ def build_provider_from_env() -> CompositeProvider:
     vision = OpenAICompatProvider(
         api_key=zhipu_key,
         base_url=os.environ.get("ZHIPU_BASE_URL", ZHIPU_BASE_URL),
-        model=os.environ.get("VISION_MODEL", "glm-4v-flash"),
+        # glm-4v-plus 读尺寸/房间明显更准；flash 太弱不足以读尺寸链
+        model=os.environ.get("VISION_MODEL", "glm-4v-plus"),
     )
     llm = OpenAICompatProvider(
         api_key=deepseek_key,

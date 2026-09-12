@@ -4,7 +4,7 @@ import base64
 import json
 from typing import Callable
 from openai import OpenAI
-from hda.models import FloorPlan, Requirement, Scheme
+from hda.models import FloorPlan, Requirement, Scheme, GridPlan
 
 ImageCall = Callable[[str, str], bytes]  # (prompt, reference_svg) -> image bytes
 
@@ -66,6 +66,20 @@ class OpenAICompatProvider:
         data = self._chat_json(system, f"小区提示：{hint.get('community','')}",
                                image_bytes, force_json=False)
         return FloorPlan.model_validate(data)
+
+    def extract_grid(self, image_bytes: bytes) -> GridPlan:
+        system = (
+            "你是户型图解析器。仔细看图上标注的尺寸数字，只输出一个 JSON，不要解释、不要代码块。字段：\n"
+            "top_dims: 顶部标注尺寸，左→右的数字数组（毫米）\n"
+            "bottom_dims: 底部标注尺寸，左→右（毫米）\n"
+            "left_dims: 左侧标注尺寸，上→下（毫米）\n"
+            "right_dims: 右侧标注尺寸，上→下（毫米）\n"
+            "rooms: 数组，每项 {name, area, bbox:[x0,y0,x1,y1]}，area 为数字(㎡)，"
+            "bbox 是该房间外框在整张图中的相对位置(0~1，左上为原点)。\n"
+            "只读真实看到的数字，不要编造；房间要读全（含阳台、卫生间、厨房）。")
+        data = self._chat_json(system, "读出这张户型图的四条尺寸链和每个房间的位置",
+                               image_bytes, force_json=False)
+        return GridPlan.model_validate(data)
 
     def parse_requirement(self, options: dict, transcript: str) -> Requirement:
         system = ("你把装修需求解析为 JSON：style,budget_level(低/中/高),household,"

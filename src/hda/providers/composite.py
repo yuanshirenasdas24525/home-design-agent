@@ -1,6 +1,6 @@
 # src/hda/providers/composite.py
 from __future__ import annotations
-from hda.models import FloorPlan, Requirement, Scheme
+from hda.models import FloorPlan, Requirement, Scheme, GridPlan
 from hda.providers.base import VisionProvider, LLMProvider, ImageProvider
 
 
@@ -19,6 +19,9 @@ class CompositeProvider:
 
     def recognize_floorplan(self, image_bytes: bytes, hint: dict) -> FloorPlan:
         return self._vision.recognize_floorplan(image_bytes, hint)
+
+    def extract_grid(self, image_bytes: bytes) -> GridPlan:
+        return self._vision.extract_grid(image_bytes)
 
     def parse_requirement(self, options: dict, transcript: str) -> Requirement:
         return self._llm.parse_requirement(options, transcript)
