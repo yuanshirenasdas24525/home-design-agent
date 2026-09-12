@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
     "openai>=1.30",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]

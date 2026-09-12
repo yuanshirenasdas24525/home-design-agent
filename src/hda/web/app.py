@@ -10,6 +10,7 @@ from hda.models import FloorPlan, Scheme
 from hda.plan_renderer import render_colored_plan
 from hda.grid import build_grid_lines, snap_rooms
 from hda.store import CaseStore
+from hda.realistic import render_room_realistic
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -34,7 +35,14 @@ class SaveCaseRequest(BaseModel):
     svg: str = ""
 
 
-def create_app(provider: Provider, store: CaseStore | None = None) -> FastAPI:
+class RealisticRequest(BaseModel):
+    floorplan: FloorPlan
+    scheme: Scheme
+    style: str = "现代简约"
+    room_ids: list[str] | None = None
+
+
+def create_app(provider: Provider, store: CaseStore | None = None, wanx=None) -> FastAPI:
     app = FastAPI(title="户型效果预览 Agent")
     pipe = Pipeline(provider)
     store = store or CaseStore()
@@ -89,6 +97,19 @@ def create_app(provider: Provider, store: CaseStore | None = None) -> FastAPI:
         if case is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse(case)
+
+    @app.post("/api/render_realistic")
+    def render_realistic(req: RealisticRequest):
+        """⑤ 几何+家具 → 结构线稿 → 通义万相 doodle → 与户型对上的实景图。"""
+        if wanx is None:
+            return JSONResponse(
+                {"error": "未配置通义万相（需在 .env 设 DASHSCOPE_API_KEY）"},
+                status_code=503)
+        images = render_room_realistic(req.floorplan, req.scheme, wanx,
+                                       style=req.style, room_ids=req.room_ids)
+        return JSONResponse({"images": {
+            rid: "data:image/png;base64," + base64.b64encode(b).decode()
+            for rid, b in images.items()}})
 
     @app.post("/api/extract_dims")
     async def extract_dims(image: UploadFile = File(...)):

@@ -5,6 +5,7 @@ from pathlib import Path
 from hda.providers.openai_compat import OpenAICompatProvider
 from hda.providers.zhipu_image import ZhipuImageProvider
 from hda.providers.composite import CompositeProvider
+from hda.providers.wanx_image import WanxImageProvider
 
 # 各家默认端点 / 模型（均可用环境变量覆盖）
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -50,3 +51,13 @@ def build_provider_from_env() -> CompositeProvider:
         model=os.environ.get("IMAGE_MODEL", "cogview-3-flash"),
     )
     return CompositeProvider(vision=vision, llm=llm, image=image)
+
+
+def build_wanx_from_env() -> WanxImageProvider | None:
+    """有 DASHSCOPE_API_KEY 就装配通义万相（线稿→实景）；否则返回 None。"""
+    load_env()
+    key = os.environ.get("DASHSCOPE_API_KEY")
+    if not key:
+        return None
+    return WanxImageProvider(api_key=key,
+                             model=os.environ.get("WANX_MODEL", "wanx2.1-imageedit"))

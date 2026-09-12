@@ -2,7 +2,7 @@ import os
 import uvicorn
 from hda.web.app import create_app
 from hda.providers.fake import FakeProvider
-from hda.providers.factory import load_env, build_provider_from_env
+from hda.providers.factory import load_env, build_provider_from_env, build_wanx_from_env
 
 if __name__ == "__main__":
     load_env()
@@ -13,4 +13,6 @@ if __name__ == "__main__":
     else:
         provider = FakeProvider()
         print("未检测到 API Key，使用 FakeProvider（假数据）")
-    uvicorn.run(create_app(provider), host="127.0.0.1", port=8000)
+    wanx = build_wanx_from_env()
+    print("通义万相实景图：", "已启用" if wanx else "未配置(缺 DASHSCOPE_API_KEY)")
+    uvicorn.run(create_app(provider, wanx=wanx), host="127.0.0.1", port=8000)
