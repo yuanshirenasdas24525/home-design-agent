@@ -45,7 +45,20 @@
     <b>房间</b>（点选后到网格里点“左上格→右下格”改范围）
     <ul id="rooms"></ul>
     <button id="addRoom">+ 加房间</button>
-    <button id="render" class="pri">🎨 生成彩平图</button>
+    <button id="render">🎨 生成空彩平图</button>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #ddd">
+      <b>装修需求</b>
+      <div style="margin:4px 0"><label style="font-size:12px;color:#555">风格 </label>
+        <select id="style">
+          <option>现代简约</option><option>北欧</option><option>轻奢</option>
+          <option>中式</option><option>美式</option><option>日式</option>
+        </select>
+        <label style="font-size:12px;color:#555;margin-left:8px">预算 </label>
+        <select id="budget"><option>中</option><option>低</option><option>高</option></select>
+      </div>
+      <textarea id="transcript" rows="2" style="width:260px" placeholder="口述：三口之家，主卧带衣帽区，不拆承重墙…"></textarea><br>
+      <button id="design" class="pri">🛋 生成软装平面方案</button>
+    </div>
   </div>
   <div class="col">
     <b>网格（点格子给选中的房间定范围）</b>
@@ -143,15 +156,32 @@ function cellClick(i,j){
   pending=null; status('已更新「'+r.name+'」范围'); drawGrid();
 }
 
-$('render').onclick=async()=>{
-  if(!rooms.length){ alert('没有房间'); return; }
+function buildFP(){
   const rect=(x0,y0,x1,y1)=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
-  const fp={community:'',layout_type:'',total_area:0,doors:[],windows:[],
+  return {community:'',layout_type:'',total_area:0,doors:[],windows:[],
     rooms:rooms.map((r,i)=>({room_id:'r'+(i+1),name:r.name,area:r.area||0,
       polygon:rect(xL[r.c0],yL[r.r0],xL[r.c1],yL[r.r1])}))};
-  const resp=await fetch('/api/render_plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({floorplan:fp})});
+}
+$('render').onclick=async()=>{
+  if(!rooms.length){ alert('没有房间'); return; }
+  const resp=await fetch('/api/render_plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({floorplan:buildFP()})});
   const d=await resp.json();
-  $('out').innerHTML='<h3>彩平图（按尺寸网格，对得上你的户型）</h3>'+d.colored_plan_svg;
+  $('out').innerHTML='<h3>空彩平图（按尺寸网格，对得上你的户型）</h3>'+d.colored_plan_svg;
+  $('out').scrollIntoView({behavior:'smooth'});
+};
+$('design').onclick=async()=>{
+  if(!rooms.length){ alert('没有房间'); return; }
+  status('正在按需求生成软装方案（DeepSeek，约十几秒）…');
+  const body={floorplan:buildFP(),
+    options:{style:$('style').value, budget_level:$('budget').value},
+    transcript:$('transcript').value};
+  const resp=await fetch('/api/design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!resp.ok){ status('生成失败: '+resp.status); return; }
+  const d=await resp.json();
+  status('软装方案已生成');
+  const items=(d.scheme.rooms||[]).map(rs=>`<li><b>${rs.name}</b>：${(rs.furniture||[]).map(f=>f.item).join('、')}</li>`).join('');
+  $('out').innerHTML='<h3>软装平面方案（按你的户型 + 需求，对得上）</h3>'+d.colored_plan_svg+
+    '<h4>各房间配置</h4><ul style="font-size:13px">'+items+'</ul>';
   $('out').scrollIntoView({behavior:'smooth'});
 };
 </script>

@@ -18,6 +18,12 @@ class PlanRequest(BaseModel):
     scheme: Scheme | None = None
 
 
+class DesignRequest(BaseModel):
+    floorplan: FloorPlan
+    options: dict = {}
+    transcript: str = ""
+
+
 def create_app(provider: Provider) -> FastAPI:
     app = FastAPI(title="户型效果预览 Agent")
     pipe = Pipeline(provider)
@@ -40,6 +46,16 @@ def create_app(provider: Provider) -> FastAPI:
     @app.get("/grid", response_class=HTMLResponse)
     def grid_page():
         return (_STATIC / "grid.html").read_text(encoding="utf-8")
+
+    @app.post("/api/design")
+    def design(req: DesignRequest):
+        """从已校正几何 + 需求 出带家具的软装平面方案（②③④，锚定几何）。"""
+        _, scheme, svg = pipe.design_from_floorplan(
+            req.floorplan, req.options, req.transcript)
+        return JSONResponse({
+            "colored_plan_svg": svg,
+            "scheme": scheme.model_dump(),
+        })
 
     @app.post("/api/extract_dims")
     async def extract_dims(image: UploadFile = File(...)):

@@ -25,6 +25,18 @@ class Pipeline:
     def __init__(self, provider: Provider):
         self.p = provider
 
+    def design_from_floorplan(self, floorplan: FloorPlan,
+                              options: dict, transcript: str):
+        """从已校正的户型几何出发（跳过①识别）：②需求 → ③方案 → ④带家具彩平图。
+
+        几何已由半自动/描线锁定，家具方案锚定在这份几何上，天然对得上。
+        返回 (requirement, scheme, colored_plan_svg)。
+        """
+        req = parse_requirement(self.p, options, transcript)          # ②
+        scheme = generate_scheme(self.p, floorplan, req)              # ③（含家具兜底）
+        svg = render_colored_plan(floorplan, scheme)                  # ④
+        return req, scheme, svg
+
     def run(self, image_bytes: bytes, community: str,
             options: dict, transcript: str) -> PreviewResult:
         fp = parse_floorplan(self.p, image_bytes, community)          # ①
