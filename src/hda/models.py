@@ -44,7 +44,7 @@ class FurnitureItem(BaseModel):
     item: str
     pos: Point
     facing: str = ""
-    size: Point = (0.0, 0.0)
+    size: list[float] = []  # [长, 宽] 或 [长, 宽, 高]（米）；平面渲染取前两维，第三维供 3D 阶段用
 
 
 class RoomScheme(BaseModel):

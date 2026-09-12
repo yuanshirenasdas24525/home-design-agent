@@ -39,7 +39,9 @@ def render_colored_plan(floorplan: FloorPlan, scheme: Scheme) -> str:
     for rs in scheme.rooms:
         for f in rs.furniture:
             fx, fy = sx(f.pos[0]), sy(f.pos[1])
-            fw, fh = f.size[0] * SCALE, f.size[1] * SCALE
+            # size 可能为 []、[长] 或 [长,宽,高]，平面只取前两维，缺省给 0.8m
+            fw = (f.size[0] if len(f.size) > 0 else 0.8) * SCALE
+            fh = (f.size[1] if len(f.size) > 1 else 0.8) * SCALE
             parts.append(f'<rect x="{fx:.0f}" y="{fy:.0f}" width="{fw:.0f}" '
                          f'height="{fh:.0f}" fill="#c9b79c" stroke="#8a7a5c" '
                          f'rx="4" opacity="0.9"/>')
