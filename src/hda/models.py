@@ -33,6 +33,7 @@ class Door(BaseModel):
 class Window(BaseModel):
     room_id: str
     pos: Point
+    kind: str = "普通"  # 普通 / 飘窗 / 落地 / 阳台门（通向阳台的落地推拉门）
 
 
 class FloorPlan(BaseModel):

@@ -7,8 +7,19 @@ from hda.sketch import render_room_sketch_png
 _SKIP = ("阳台", "飘窗")
 
 
-def _prompt_for(room_name: str, style: str) -> str:
-    return f"{style}风格{room_name}室内实景照片，高清写实，自然采光，精装修"
+def _win_phrase(kind: str) -> str:
+    return {"飘窗": "背墙有一个飘窗（非落地、带窗台）",
+            "落地": "背墙有一扇落地窗",
+            "阳台门": "背墙是通向阳台的落地推拉玻璃门",
+            "普通": "背墙有一扇普通窗户"}.get(kind, "")
+
+
+def _prompt_for(room_name: str, style: str, win_kind: str | None) -> str:
+    win = _win_phrase(win_kind) + "，" if win_kind else "其余墙面为完整实墙、无窗，"
+    return (f"{style}风格{room_name}室内实景照片，高清写实，精装修。"
+            f"严格保持结构线稿的墙体与家具位置：{win}"
+            f"实心墙面必须完整、不得出现任何窗户或门洞或装饰镂空；"
+            f"家具为实心不透明材质，按线稿体块位置摆放。")
 
 
 def render_room_realistic(floorplan: FloorPlan, scheme: Scheme, wanx,
@@ -30,5 +41,8 @@ def render_room_realistic(floorplan: FloorPlan, scheme: Scheme, wanx,
         if room is None or not room.polygon:
             continue
         sketch_png = render_room_sketch_png(room, rs, floorplan.windows)
-        out[rs.room_id] = wanx.doodle(sketch_png, _prompt_for(rs.name, style))
+        wins = [w for w in floorplan.windows if w.room_id == rs.room_id]
+        order = {"阳台门": 0, "落地": 1, "飘窗": 2, "普通": 3}
+        kind = sorted(wins, key=lambda w: order.get(w.kind, 3))[0].kind if wins else None
+        out[rs.room_id] = wanx.doodle(sketch_png, _prompt_for(rs.name, style, kind))
     return out
